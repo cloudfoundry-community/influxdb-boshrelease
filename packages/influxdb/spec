@@ -1,0 +1,7 @@
+---
+name: influxdb
+
+dependencies:
+
+files:
+- influxdb/influxdb-1.1.1_linux_amd64.tar.gz

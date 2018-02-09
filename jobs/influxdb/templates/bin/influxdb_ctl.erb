@@ -1,0 +1,65 @@
+#!/bin/bash
+
+set -e # exit immediately if a simple command exits with a non-zero status
+set -u # report the usage of uninitialized variables
+
+DATA_DIR=/var/vcap/data/influxdb
+STORE_DIR=/var/vcap/store/influxdb
+LOG_DIR=/var/vcap/sys/log/influxdb
+RUN_DIR=/var/vcap/sys/run/influxdb
+PIDFILE=$RUN_DIR/influxdb.pid
+
+remove_pid() {
+    rm -f "$PIDFILE"
+}
+
+exec 1> >( tee -a /var/vcap/sys/log/influxdb_ctl.log     | logger -p user.info  -t vcap.influxdb.ctl )
+exec 2> >( tee -a /var/vcap/sys/log/influxdb_ctl.err.log | logger -p user.error -t vcap.influxdb.ctl )
+
+ulimit -c unlimited
+ulimit -n <%= p("influxdb.max_open_fd") %>
+
+for DIR in $DATA_DIR $STORE_DIR $LOG_DIR $RUN_DIR; do
+  mkdir -p "$DIR"
+  chown -R vcap:vcap "$DIR"
+  chmod 755 "$DIR"
+done
+
+case $1 in
+  start)
+    /sbin/start-stop-daemon \
+      --start \
+      --quiet \
+      --oknodo \
+      --pidfile "$PIDFILE" \
+      --chuid vcap:vcap \
+      --exec "/var/vcap/packages/influxdb/bin/influxd" \
+      -- -config "/var/vcap/jobs/influxdb/config/influxdb.conf" \
+         -pidfile "$PIDFILE" \
+      1> >( tee -a ${LOG_DIR}/influxdb.log | logger -p user.info -t vcap.influxdb ) 2>&1 &
+      # Aggregate stdout/stderr because Influxdb prints log to stderr, and only prints banner to stdout
+
+      # Post start influxdb setup
+      # TODO: bosh official post-start script will be available after
+      #       bosh-release v255.4+ and only for releases deployed with 3125+
+      #
+      # NOTE: This script will run everytime after monit start.
+      #       Therefore, this script should be definitely idempotent
+      /var/vcap/jobs/influxdb/bin/influxdb_setup
+    ;;
+
+  stop)
+    /sbin/start-stop-daemon \
+      --stop \
+      --pidfile "$PIDFILE" \
+      --oknodo \
+      --retry 15
+
+    remove_pid
+    ;;
+
+  *)
+    echo "Usage: control {start|stop}" >&2
+    exit 1
+    ;;
+esac

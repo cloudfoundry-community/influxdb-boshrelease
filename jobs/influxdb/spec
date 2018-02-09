@@ -1,0 +1,129 @@
+---
+name: influxdb
+
+templates:
+  bin/influxdb_ctl.erb: bin/influxdb_ctl
+  bin/influxdb_setup.erb: bin/influxdb_setup
+  config/influxdb.conf.erb: config/influxdb.conf
+
+packages:
+- influxdb
+
+properties:
+  # ulimit section
+  influxdb.max_open_fd:
+    description: Max open file descriptors setting (ulimit -n)
+    default: 65536
+
+  # meta section
+  influxdb.meta.dir:
+    description: Directory to store metadata
+    default: /var/vcap/store/influxdb/meta
+
+  influxdb.meta.tcp-port:
+    description: Meta tcp port
+    default: 8088
+
+  influxdb.meta.http-port:
+    description: Meta http port
+    default: 8091
+
+  # data section
+  influxdb.data.dir:
+    description: Directory to store time series data
+    default: /var/vcap/store/influxdb/data
+
+  influxdb.data.max-series-per-database:
+    description: The maximum series allowed per database before writes are dropped
+    default: 1000000
+
+  influxdb.data.max-values-per-tag:
+    description: The maximum number of tag values per tag that are allowed before writes are dropped
+    default: 100000
+
+  influxdb.data.wal-dir:
+    description: Directory for WAL data
+    default: /var/vcap/store/influxdb/wal
+
+  # coordinator section
+  influxdb.coordinator.query-timeout:
+    description: The maximum time a query will is allowed to execute before being killed by the system. "0s" to disable.
+    default: "0s"
+
+  influxdb.coordinator.log-queries-after:
+    description: The time threshold when a query will be logged as a slow query. "0s" to disable.
+    default: "0s"
+
+  # admin section
+  influxdb.admin.enabled:
+    description: Admin UI
+    default: false
+
+  # http section
+  influxdb.http.enabled:
+    description: Influxdb http api
+    default: true
+
+  influxdb.http.port:
+    description: Influxdb http api port
+    default: 8086
+
+  # graphite section
+  influxdb.graphite.enabled:
+    description: Graphite endpoint
+    default: false
+
+  influxdb.graphite.database:
+    description: Database name for graphite metrics
+    default: graphite
+
+  influxdb.graphite.retention-policy:
+    description: Retention policy for graphite metrics. If empty, data will be stored to default RP
+    default: ""
+
+  influxdb.graphite.port:
+    description: Graphite endpoint port
+    default: 2003
+
+  influxdb.graphite.templates:
+    description: Graphite path templates
+    default:
+    - measurement*
+
+  # hinted-handoff section
+  influxdb.hinted-handoff.dir:
+    description: Directory for hinted-handoff feature
+    default: /var/vcap/store/influxdb/hh
+
+  # Influxdb setup
+  influxdb.create_databases:
+    description: |
+      Databases which will be created after influxdb starts.
+      CAVEAT: This only perform database creation; database deletion should be
+      done manually
+    default: []
+
+  influxdb.retention_policy_rules:
+    description: |
+      Retention policy rules that will be applied on influxdb startup.
+      If the RP does not exist
+        do "create retention policy ..."
+      else
+        do "alter retention policy ..."
+      CAVEAT:
+      - The script does not care about the previous state (it is supposed be
+        idempotent though)
+      - Changing the default retention policy does not migrate data from the
+        previous retention policy: be careful if you want to do this or you
+        will end up with data split across two RPs
+      - RPs are never deleted
+    example:
+      database_1:
+        default: default_rp
+        retention_policies:
+        - name: default_rp
+          duration: 0d # INF/0d means forever
+          shard_duration: 7d # Optional
+        - name: three_month
+          duration: 90d
+    default: {}

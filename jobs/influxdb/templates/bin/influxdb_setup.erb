@@ -1,0 +1,145 @@
+#!/bin/bash
+# This is run everytime after influxdb is started.
+# Therefore, this script should be definitely idempotent
+<%
+# Do the checks
+dbs = p('influxdb.create_databases')
+dbs.each do |db|
+  db_name_regex = /^[_a-zA-Z]+$/
+  unless db.match(db_name_regex)
+    raise "Oops: Database name(#{db}) should match #{db_name_regex.inspect}"
+  end
+end
+
+rp_rules = p('influxdb.retention_policy_rules')
+rp_rules.each do |db, rps_conf|
+  # One and only one default RP
+  default_rp, rps = rps_conf["default"], rps_conf["retention_policies"]
+
+  unless rps.count{|rp| rp['name'] == default_rp } == 1
+    raise "Oops: the default RP of '#{db}'(#{default_rp}) should be in #{db}.retention_policies"
+  end
+
+  ## Validations - https://docs.influxdata.com/influxdb/v1.0/query_language/database_management
+  rps.each do |rp|
+    rp_name, duration, shard_duration = ["name", "duration", "shard_duration"].map{|key| rp[key]}
+    rp_name_regex = /^[_a-zA-Z]+$/
+    duration_regex = /^\d+(m|h|d|w)$/
+    shard_duration_regex = /^\d+(u|ms|s|m|h|d|w)$/
+
+    unless rp_name.match(rp_name_regex)
+      raise "Oops: rp_name('#{rp_name}') should match #{rp_name_regex.inspect}"
+    end
+
+    unless ( duration == "INF" || duration.match(duration_regex) )
+      raise "Oops: duration(#{duration}) should match #{duration_regex.inspect} or be INF"
+    end
+
+    unless (shard_duration.nil? || shard_duration.match(shard_duration_regex) )
+      raise "Oops: shard_duration(#{shard_duration}) should match #{shard_duration_regex.inspect} or be nil"
+    end
+  end
+end
+%>
+
+set -u # UNBIND VAR
+
+PATH="$PATH:/var/vcap/packages/influxdb/bin" # get influx
+
+INFLUXDB_HTTP_PORT=<%= p('influxdb.http.port') %>
+
+DATABASES_TO_CREATE="<%= dbs.join(' ') %>"
+
+
+ping-influxdb () {
+  # Ping influxdb port and return the result, retry 6 times
+  for retry in $(seq 5 -1 0); do
+    sleep 2
+    echo "Trying to setup influxdb. $retry times left"
+    if nc -z -v 127.0.0.1 $INFLUXDB_HTTP_PORT 2>&1 ; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+create-databases () {
+  # Create databases that is passed in by parameters.
+  # If no database to create, exit
+  [[ -z "${@}" ]] && return
+
+  for db in "${@}"; do
+    influx -execute "create database ${db}"
+    echo "Creating database ${db}. Returns $?"
+  done
+}
+
+database-exists () {
+  # Test if database exists in influxdb or not
+  if influx -format csv -execute 'show databases' | tail -n +2 | cut -d, -f2 | grep -q "^${1}$" ; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+database-has-rp () {
+  # database-has-rp <db_name> <rp_name> => true or false
+  local db_name="$1" rp_name="$2"
+
+  ! database-exists "$db_name" && return 1
+
+  if influx -format csv -execute "show retention policies on ${db_name}" | tail -n +2 | cut -d, -f1 | grep -q "^${rp_name}$" ; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+apply-retention-policy () {
+  # Usage: apply-retention-policy <db> <rp> <duration> <shard_duration?> <default?>
+  # If rp exists, alter. Else create
+  local db_name="$1" rp_name="$2" rp_duration="$3" shard_duration="$4" set_default="$5"
+
+  if ! database-exists "$db_name"; then
+    echo "Cannot apply RP, for DB '$db_name' does not exist. Return 1"
+    return 1
+  fi
+
+  if database-has-rp "$db_name" "$rp_name"; then
+    local action=alter
+  else
+    local action=create
+  fi
+
+  if [ -z "$shard_duration" ]; then
+    local shard_duration_str=""
+  else
+    local shard_duration_str="shard duration $shard_duration"
+  fi
+
+  echo "[debug]" influx -execute "\"${action} retention policy ${rp_name} on ${db_name} duration ${rp_duration} replication 1 ${shard_duration_str} ${set_default}\""
+  influx -execute "${action} retention policy ${rp_name} on ${db_name} duration ${rp_duration} replication 1 ${shard_duration_str} ${set_default}" 2>&1
+  echo "${action} RP ${rp_name} on ${db_name}. Returns $?"
+}
+
+#--------------#
+#     MAIN     #
+#--------------#
+if ping-influxdb; then
+  create-databases $DATABASES_TO_CREATE # dbs are divided by space here
+  # OTHER Setups
+<%= # Retention Policies
+rp_rules.map do |db, rps_conf|
+  default_rp, rps = rps_conf["default"], rps_conf["retention_policies"]
+  rps.map do |rp|
+    rp_name, duration, _shard_duration = ["name", "duration", "shard_duration"].map{|key| rp[key]}
+    shard_duration = _shard_duration || '""'
+    is_default = (rp_name == default_rp ) ? "default" : '""'
+    "  apply-retention-policy #{db} #{rp_name} #{duration} #{shard_duration} #{is_default}"
+  end
+end.join("\n") %>
+else
+  echo "Failed to setup influxdb... Exit" >&2
+fi
