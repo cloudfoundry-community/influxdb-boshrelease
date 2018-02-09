@@ -9,4 +9,4 @@ set -u # report the usage of uninitialized variables
 # $BOSH_INSTALL_TARGET - where you copy/install files to be included in package
 
 # Uncompress influxdb tarball, only extract binary part.
-tar xvf influxdb/influxdb-*_linux_amd64.tar.gz -C ${BOSH_INSTALL_TARGET} --strip-components=3 ./influxdb-${INFLUXDB_VERSION}-1/usr/bin
+tar xvf influxdb/influxdb-*_linux_amd64.tar.gz -C ${BOSH_INSTALL_TARGET} --strip-components=3 --wildcards ./influxdb-*-1/usr/bin

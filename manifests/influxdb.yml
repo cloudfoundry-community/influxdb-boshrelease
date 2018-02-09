@@ -1,0 +1,32 @@
+---
+name: influxdb
+
+releases:
+- name: influxdb
+  version: 0.0.1
+  url: git+https://github.com/cloudfoundry-community/influxdb-boshrelease
+
+stemcells:
+- alias: default
+  os: ubuntu-trusty
+  version: latest
+
+update:
+  canaries: 1
+  max_in_flight: 1
+  canary_watch_time: 5000-60000
+  update_watch_time: 5000-60000
+
+instance_groups:
+- name: influxdb
+  azs: [z1]
+  instances: 1
+  jobs:
+  - name: influxdb
+    release: influxdb
+    properties: {}
+  vm_type: default
+  stemcell: default
+  persistent_disk: 10240
+  networks:
+  - name: default
