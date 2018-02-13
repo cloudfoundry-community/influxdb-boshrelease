@@ -68,6 +68,10 @@ properties:
     description: Influxdb http api port
     default: 8086
 
+  influxdb.http.basic_auth_realm:
+    description: Realm reported when performing HTTP basic auth
+    default: InfluxDB
+
   # graphite section
   influxdb.graphite.enabled:
     description: Graphite endpoint
@@ -96,11 +100,33 @@ properties:
     default: /var/vcap/store/influxdb/hh
 
   # Influxdb setup
-  influxdb.create_databases:
+  influxdb.users:
     description: |
-      Databases which will be created after influxdb starts.
+      List of users to create, along their privileges.
+      CAVEAT: This only creates/updates users: user deletion should be done
+      manually
+    example:
+    - name: trusty
+      password: c0wp0w3r
+      privilege: admin # admin privileges are global
+    - name: needy
+      password: s0l4m3
+      privilege: read # read, write or readwrite
+      database: sampledb # database name is required for read/write/readwrite
+    - name: dumpy
+      password: omgomgomg
+      privilege: write
+      database: sampledb
+    default: []
+
+  influxdb.databases:
+    description: |
+      List of databases which will be created when influxdb starts.
       CAVEAT: This only perform database creation; database deletion should be
       done manually
+    example:
+    - sampledb
+    - myotherdb
     default: []
 
   influxdb.retention_policy_rules:
@@ -119,10 +145,10 @@ properties:
       - RPs are never deleted
     example:
       database_1:
-        default: default_rp
+        default: autogen
         retention_policies:
-        - name: default_rp
-          duration: 0d # INF/0d means forever
+        - name: autogen
+          duration: 14d # to disable dropping old data, set 0
           shard_duration: 7d # Optional
         - name: three_month
           duration: 90d

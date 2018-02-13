@@ -1,11 +1,16 @@
 #!/bin/bash
-# This is run everytime after influxdb is started.
-# Therefore, this script should be definitely idempotent
+# This script *MUST* be idempotent because it runs everytime influxd starts
 <%
-# Do the checks
-dbs = p('influxdb.create_databases')
+db_name_regex  = /^[_a-zA-Z]+$/
+username_regex = /^[_a-zA-Z0-9-]+$/
+password_regex = /^[_a-zA-Z0-9-]+$/
+admin_username = '__influxdb_admin'
+
+# Sanity checks performed at ERB rendering time
+
+dbs = p('influxdb.databases')
+raise "No database defined" if dbs.empty?
 dbs.each do |db|
-  db_name_regex = /^[_a-zA-Z]+$/
   unless db.match(db_name_regex)
     raise "Oops: Database name(#{db}) should match #{db_name_regex.inspect}"
   end
@@ -40,19 +45,40 @@ rp_rules.each do |db, rps_conf|
     end
   end
 end
-%>
 
-set -u # UNBIND VAR
+users = p('influxdb.users')
+userpwd = {}
+useradmin = {}
+users.each do |user|
+  raise "Unknown privilege #{user['privilege']}" unless ['admin','readwrite','write','read'].include? user['privilege']
+  raise "Admin privileges for user #{user['name']} can't be applied to a single database" if user['privilege'] == 'admin' && user['database'] != ''
+  raise "User #{user['name']} can't be both admin and non-admin" if useradmin.key? user['name'] && useradmin[user['name']] != (user['privilege'] == 'admin')
+  useradmin[user['name']] = (user['privilege'] == 'admin')
+  raise "Database name (#{user['database']}) is not listed in influxdb.databases" unless dbs.include? user['database']
+  raise "User name (#{user['name']} should match #{username_regex.inspect}" unless user['name'].match(username_regex)
+  raise "User name #{admin_username} is reserved" if user['name'] == admin_username
+  raise "Password for user #{user['name']} should match #{password_regex.inspect}" unless user['password'].match(password_regex)
+  raise "Multiple passwords provided for user #{user['name']}" if userpwd.key? user['name'] && userpwd[user['name']] != user['password']
+  userpwd[user['name']] = user['password']
+end
+%>
+set -u # UNBOUND VAR
 
 PATH="$PATH:/var/vcap/packages/influxdb/bin" # get influx
 
 INFLUXDB_HTTP_PORT=<%= p('influxdb.http.port') %>
 
-DATABASES_TO_CREATE="<%= dbs.join(' ') %>"
-
+ADMIN_USERNAME="<%= admin_username %>"
+ADMIN_PASSWORD_FILE="/var/vcap/store/influxdb/admin_password_file"
+if [ ! -f "$ADMIN_PASSWORD_FILE" ]; then
+  # generate the admin password
+  openssl rand -hex 16 > "$ADMIN_PASSWORD_FILE"
+fi
+ADMIN_PASSWORD=$(cat "$ADMIN_PASSWORD_FILE")
+INFLUX="influx -username $ADMIN_USERNAME -password $ADMIN_PASSWORD"
 
 ping-influxdb () {
-  # Ping influxdb port and return the result, retry 6 times
+  # Try to ping influxdb until it's ready to accept connections
   for retry in $(seq 100 -1 0); do
     sleep 2
     echo "Trying to setup influxdb. $retry times left"
@@ -64,20 +90,24 @@ ping-influxdb () {
   return 1
 }
 
-create-databases () {
-  # Create databases that is passed in by parameters.
-  # If no database to create, exit
-  [[ -z "${@}" ]] && return
+bootstrap-auth () {
+  # ensure the admin account used for all setup operations exists
+  $INFLUX -execute "SHOW USERS" 1>/dev/null 2>/dev/null && \
+    echo "Admin user $ADMIN_USERNAME already exists" && \
+    return 0
+  
+  influx -execute "CREATE USER $ADMIN_USERNAME WITH PASSWORD '$ADMIN_PASSWORD' WITH ALL PRIVILEGES"
+  echo "Creating admin user $ADMIN_USERNAME: $?"
+}
 
-  for db in "${@}"; do
-    influx -execute "create database ${db}"
-    echo "Creating database ${db}. Returns $?"
-  done
+create-database () {
+  $INFLUX -execute "create database \"$1\""
+  echo "Creating database $1: $?"
 }
 
 database-exists () {
   # Test if database exists in influxdb or not
-  if influx -format csv -execute 'show databases' | tail -n +2 | cut -d, -f2 | grep -q "^${1}$" ; then
+  if $INFLUX -format csv -execute 'show databases' | tail -n +2 | cut -d, -f2 | grep -q "^${1}$" ; then
     return 0
   else
     return 1
@@ -90,7 +120,7 @@ database-has-rp () {
 
   ! database-exists "$db_name" && return 1
 
-  if influx -format csv -execute "show retention policies on ${db_name}" | tail -n +2 | cut -d, -f1 | grep -q "^${rp_name}$" ; then
+  if $INFLUX -format csv -execute "show retention policies on ${db_name}" | tail -n +2 | cut -d, -f1 | grep -q "^${rp_name}$" ; then
     return 0
   else
     return 1
@@ -119,19 +149,67 @@ apply-retention-policy () {
     local shard_duration_str="shard duration $shard_duration"
   fi
 
-  echo "[debug]" influx -execute "\"${action} retention policy ${rp_name} on ${db_name} duration ${rp_duration} replication 1 ${shard_duration_str} ${set_default}\""
-  influx -execute "${action} retention policy ${rp_name} on ${db_name} duration ${rp_duration} replication 1 ${shard_duration_str} ${set_default}" 2>&1
-  echo "${action} RP ${rp_name} on ${db_name}. Returns $?"
+  $INFLUX -execute "${action} retention policy ${rp_name} on ${db_name} duration ${rp_duration} replication 1 ${shard_duration_str} ${set_default}" 2>&1
+  echo "${action} RP ${rp_name} on ${db_name}: $?"
+}
+
+user-exists () {
+  # Test if user exists in influxdb or not
+  if $INFLUX -format csv -execute 'show users' | tail -n +2 | cut -d, -f2 | grep -q "^${1}$" ; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+create-or-update-user () {
+  user="$1"
+  password="$2"
+  privilege="$3" # can be one of "read", "write", "readwrite" or "admin"
+  database="$4"
+
+  # create the user or update its password
+  if user-exists "$user"; then
+    $INFLUX -execute "SET PASSWORD FOR $user = '$password'"
+    echo "Update password for user \"$user\": $?"
+  else
+    $INFLUX -execute "CREATE USER $user WITH PASSWORD '$password'"
+    echo "Create user \"$user\": $?"
+  fi
+
+  # grant/revoke privileges as needed
+  if [ "$privilege" = "admin" ]; then
+    $INFLUX -execute "GRANT ALL PRIVILEGES TO $user"
+    echo "Grant admin privileges to user \"$user\": $?"
+  else
+    $INFLUX -execute "REVOKE ALL PRIVILEGES FROM $user"
+    echo "Revoke admin privileges to user \"$user\": $?"
+    if [ "$privilege" = "readwrite" ]; then
+      $INFLUX -execute "GRANT ALL ON $database TO $user"
+      echo "Grant readwrite privileges to user \"$user\" on database \"$database\": $?"
+    elif [ "$privilege" = "write" ]; then
+      $INFLUX -execute "GRANT WRITE ON $database TO $user; REVOKE READ ON $database FROM $user"
+      echo "Grant write privileges to user \"$user\" on database \"$database\": $?"
+    elif [ "$privilege" = "read" ]; then
+      $INFLUX -execute "GRANT READ ON $database TO $user; REVOKE WRITE ON $database FROM $user"
+      echo "Grant read privileges to user \"$user\" on database \"$database\": $?"
+    fi
+  fi
 }
 
 #--------------#
 #     MAIN     #
 #--------------#
 if ping-influxdb; then
-  create-databases $DATABASES_TO_CREATE # dbs are divided by space here
-  # OTHER Setups
-<%= # Retention Policies
-rp_rules.map do |db, rps_conf|
+  bootstrap-auth
+
+  # Databases
+<%= dbs.map do |db|
+  "  create-database \"#{db}\""
+end.join("\n") %>
+
+  # Retention policies
+<%= rp_rules.map do |db, rps_conf|
   default_rp, rps = rps_conf["default"], rps_conf["retention_policies"]
   rps.map do |rp|
     rp_name, duration, _shard_duration = ["name", "duration", "shard_duration"].map{|key| rp[key]}
@@ -140,6 +218,16 @@ rp_rules.map do |db, rps_conf|
     "  apply-retention-policy #{db} #{rp_name} #{duration} #{shard_duration} #{is_default}"
   end
 end.join("\n") %>
+
+  # Users
+<%= users.map do |user|
+  "  create-or-update-user \"#{user['name']}\" \"#{user['password']}\" \"#{user['privilege']}\" \"#{user['database']}\""
+end.join("\n") %>
+
 else
-  echo "Failed to setup influxdb... Exit" >&2
+  echo "Failed to setup InfluxDB... tough luck!" >&2
+
+  # Kill influxdb since it's not responding at all
+  /var/vcap/jobs/influxdb/bin/influxdb_ctl stop
+
 fi

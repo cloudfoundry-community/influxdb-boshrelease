@@ -24,7 +24,19 @@ instance_groups:
   jobs:
   - name: influxdb
     release: influxdb
-    properties: {}
+    properties:
+      influxdb:
+        databases:
+        - example
+        users:
+        - name: reader
+          password: nobodyknows
+          privilege: read
+          database: example
+        - name: writer
+          password: iftheyonlyknew
+          privilege: write
+          database: example
   vm_type: default
   stemcell: default
   persistent_disk: 10240
