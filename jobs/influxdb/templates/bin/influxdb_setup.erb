@@ -53,7 +53,7 @@ DATABASES_TO_CREATE="<%= dbs.join(' ') %>"
 
 ping-influxdb () {
   # Ping influxdb port and return the result, retry 6 times
-  for retry in $(seq 5 -1 0); do
+  for retry in $(seq 100 -1 0); do
     sleep 2
     echo "Trying to setup influxdb. $retry times left"
     if nc -z -v 127.0.0.1 $INFLUXDB_HTTP_PORT 2>&1 ; then
