@@ -102,9 +102,9 @@ properties:
   # Influxdb setup
   influxdb.users:
     description: |
-      List of users to create, along their privileges.
-      CAVEAT: This only creates/updates users: user deletion should be done
-      manually
+      List of users to create, along their privileges. One or more users are
+      required. CAVEAT: This only creates/updates users: user deletion should 
+      be done manually.
     example:
     - name: trusty
       password: c0wp0w3r
@@ -117,7 +117,6 @@ properties:
       password: omgomgomg
       privilege: write
       database: sampledb
-    default: []
 
   influxdb.databases:
     description: |
