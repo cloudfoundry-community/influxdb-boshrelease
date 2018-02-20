@@ -3,7 +3,7 @@ name: influxdb
 
 releases:
 - name: influxdb
-  version: 0.0.1
+  version: 1
   url: git+https://github.com/cloudfoundry-community/influxdb-boshrelease
 
 stemcells:
