@@ -2,8 +2,8 @@
 # This script *MUST* be idempotent because it runs everytime influxd starts
 <%
 db_name_regex  = /^[_a-zA-Z]+$/
-username_regex = /^[_a-zA-Z0-9-]+$/
-password_regex = /^[_a-zA-Z0-9-]+$/
+username_regex = /^[_a-zA-Z0-9]+$/
+password_regex = /^[_a-zA-Z0-9]+$/
 admin_username = '__influxdb_admin'
 
 # Sanity checks performed at ERB rendering time
