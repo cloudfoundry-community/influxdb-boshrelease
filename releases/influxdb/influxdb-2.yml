@@ -1,0 +1,15 @@
+name: influxdb
+version: "2"
+commit_hash: fe52429
+uncommitted_changes: false
+jobs:
+- name: influxdb
+  version: d5f5281e1144089f8f45092479e1a1642cce041b
+  fingerprint: d5f5281e1144089f8f45092479e1a1642cce041b
+  sha1: f00f221e4d720677d5a85114aed4a66f17dee38c
+packages:
+- name: influxdb
+  version: 8090b883bba73a075b8fc9d6da6d8a8ddf8cc07c
+  fingerprint: 8090b883bba73a075b8fc9d6da6d8a8ddf8cc07c
+  sha1: a07bb7e0dbf6eff68cea47df8d8f500730bceab6
+  dependencies: []
