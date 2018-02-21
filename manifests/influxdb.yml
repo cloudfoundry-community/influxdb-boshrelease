@@ -3,7 +3,7 @@ name: influxdb
 
 releases:
 - name: influxdb
-  version: 1
+  version: 2
   url: git+https://github.com/cloudfoundry-community/influxdb-boshrelease
 
 stemcells:
@@ -37,6 +37,12 @@ instance_groups:
           password: iftheyonlyknew
           privilege: write
           database: example
+        retention_policy_rules:
+          example:
+            default: autogen
+            retention_policies:
+            - name: autogen
+              duration: 14d 
   vm_type: default
   stemcell: default
   persistent_disk: 10240
