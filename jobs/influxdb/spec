@@ -54,11 +54,6 @@ properties:
     description: The time threshold when a query will be logged as a slow query. "0s" to disable.
     default: "0s"
 
-  # admin section
-  influxdb.admin.enabled:
-    description: Admin UI
-    default: false
-
   # http section
   influxdb.http.enabled:
     description: Influxdb http api
