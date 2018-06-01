@@ -51,10 +51,10 @@ userpwd = {}
 useradmin = {}
 users.each do |user|
   raise "Unknown privilege #{user['privilege']}" unless ['admin','readwrite','write','read'].include? user['privilege']
-  raise "Admin privileges for user #{user['name']} can't be applied to a single database" if user['privilege'] == 'admin' && user['database'] != ''
+  raise "Admin privileges for user #{user['name']} can't be applied to a single database" if user['privilege'] == 'admin' && !user['database'].nil?
   raise "User #{user['name']} can't be both admin and non-admin" if useradmin.key? user['name'] && useradmin[user['name']] != (user['privilege'] == 'admin')
   useradmin[user['name']] = (user['privilege'] == 'admin')
-  raise "Database name (#{user['database']}) is not listed in influxdb.databases" unless dbs.include? user['database']
+  raise "Database name (#{user['database']}) is not listed in influxdb.databases" unless dbs.include? user['database'] || user['database'].nil?
   raise "User name (#{user['name']} should match #{username_regex.inspect}" unless user['name'].match(username_regex)
   raise "User name #{admin_username} is reserved" if user['name'] == admin_username
   raise "Password for user #{user['name']} should match #{password_regex.inspect}" unless user['password'].match(password_regex)
