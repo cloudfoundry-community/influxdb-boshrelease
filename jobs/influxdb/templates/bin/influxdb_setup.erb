@@ -72,11 +72,11 @@ ADMIN_USERNAME="<%= admin_username %>"
 ADMIN_PASSWORD_FILE="/var/vcap/store/influxdb/admin_password_file"
 if [ ! -f "$ADMIN_PASSWORD_FILE" ]; then
   # generate the admin password and store it in /var/vcap/store
-  openssl rand -hex 16 > "$ADMIN_PASSWORD_FILE"
+  xxd -l 16 -pu </dev/urandom >"$ADMIN_PASSWORD_FILE"
 fi
-sudo chmod 0600 "$ADMIN_PASSWORD_FILE"
-sudo chown root:root "$ADMIN_PASSWORD_FILE"
-ADMIN_PASSWORD=$(sudo cat "$ADMIN_PASSWORD_FILE")
+chmod 0600 "$ADMIN_PASSWORD_FILE"
+chown root:root "$ADMIN_PASSWORD_FILE"
+ADMIN_PASSWORD=$(cat "$ADMIN_PASSWORD_FILE")
 INFLUX="influx -username $ADMIN_USERNAME -password $ADMIN_PASSWORD"
 
 ping-influxdb () {
@@ -97,7 +97,7 @@ bootstrap-auth () {
   $INFLUX -execute "SHOW USERS" 1>/dev/null 2>/dev/null && \
     echo "Admin user $ADMIN_USERNAME already exists" && \
     return 0
-  
+
   influx -execute "CREATE USER $ADMIN_USERNAME WITH PASSWORD '$ADMIN_PASSWORD' WITH ALL PRIVILEGES"
   echo "Creating admin user $ADMIN_USERNAME: $?"
 }
