@@ -37,6 +37,9 @@ instance_groups:
           password: iftheyonlyknew
           privilege: write
           database: example
+        - name: administrator
+          password: godhelpme
+          privilege: admin
         retention_policy_rules:
           example:
             default: autogen
