@@ -155,7 +155,7 @@ apply-retention-policy () {
 
 user-exists () {
   # Test if user exists in influxdb or not
-  if $INFLUX -format csv -execute 'show users' | tail -n +2 | cut -d, -f2 | grep -q "^${1}$" ; then
+  if $INFLUX -format csv -execute 'show users' | tail -n +2 | cut -d, -f1 | grep -q "^${1}$" ; then
     return 0
   else
     return 1
