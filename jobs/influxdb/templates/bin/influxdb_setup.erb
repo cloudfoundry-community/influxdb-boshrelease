@@ -71,10 +71,12 @@ INFLUXDB_HTTP_PORT=<%= p('influxdb.http.port') %>
 ADMIN_USERNAME="<%= admin_username %>"
 ADMIN_PASSWORD_FILE="/var/vcap/store/influxdb/admin_password_file"
 if [ ! -f "$ADMIN_PASSWORD_FILE" ]; then
-  # generate the admin password
+  # generate the admin password and store it in /var/vcap/store
   openssl rand -hex 16 > "$ADMIN_PASSWORD_FILE"
 fi
-ADMIN_PASSWORD=$(cat "$ADMIN_PASSWORD_FILE")
+sudo chmod 0600 "$ADMIN_PASSWORD_FILE"
+sudo chown root:root "$ADMIN_PASSWORD_FILE"
+ADMIN_PASSWORD=$(sudo cat "$ADMIN_PASSWORD_FILE")
 INFLUX="influx -username $ADMIN_USERNAME -password $ADMIN_PASSWORD"
 
 ping-influxdb () {
@@ -226,6 +228,10 @@ end.join("\n") %>
 <%= users.map do |user|
   "  create-or-update-user \"#{user['name']}\" \"#{user['password']}\" \"#{user['privilege']}\" \"#{user['database']}\""
 end.join("\n") %>
+
+  # ensure that all changes (especially the credentials for 
+  # __influxdb_admin) have been written to disk
+  sync
 
 else
   echo "Failed to setup InfluxDB... tough luck!" >&2
