@@ -15,6 +15,7 @@ bosh -e vbox -d influxdb manifests/influxdb.yml -o manifests/dev.yml
 ```
 
 ## Features
+- InfluxDB 1.4.3
 - defining multiple databases
 - defining multiple retention policies
 - defining multiple users and authorizations (read, read/write and admin)
