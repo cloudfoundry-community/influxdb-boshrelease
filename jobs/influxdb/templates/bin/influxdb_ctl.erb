@@ -19,11 +19,17 @@ exec 2> >( tee -a /var/vcap/sys/log/influxdb_ctl.err.log | logger -p user.error 
 ulimit -c unlimited
 ulimit -n <%= p("influxdb.max_open_fd") %>
 
-for DIR in $DATA_DIR $STORE_DIR $LOG_DIR $RUN_DIR; do
+for DIR in $DATA_DIR $LOG_DIR $RUN_DIR; do
   mkdir -p "$DIR"
   chown -R vcap:vcap "$DIR"
   chmod 755 "$DIR"
 done
+
+# $STORE_DIR contains the admin_password_file that must have
+# permissions 600/root:root, so avoid doing chown -R
+mkdir -p "$STORE_DIR"
+chown vcap:vcap "$STORE_DIR"
+chmod 755 "$STORE_DIR"
 
 case $1 in
   start)

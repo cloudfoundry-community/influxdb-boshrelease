@@ -139,11 +139,11 @@ properties:
       - RPs are never deleted
     example:
       database_1:
-        default: autogen
+        default: raw_data
         retention_policies:
-        - name: autogen
-          duration: 14d # to disable dropping old data, set 0
-          shard_duration: 7d # Optional
-        - name: three_month
+        - name: raw_data
+          duration: 3d # to disable dropping old data, set 0
+          shard_duration: 3h # Optional
+        - name: processed_data
           duration: 90d
     default: {}
